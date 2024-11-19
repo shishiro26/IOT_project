@@ -1,9 +1,17 @@
 import express from "express";
 import { Crypto } from "@peculiar/webcrypto";
 import cors from "cors";
+import http from "http";
+import { Server } from "socket.io";
 
 const port = 4000;
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+  },
+});
 const crypto = new Crypto();
 
 app.use(cors());
@@ -25,7 +33,6 @@ function adjustKeyLength(key, requiredLength) {
   }
 }
 
-
 async function encryptAES(message, key) {
   const encoder = new TextEncoder();
   const data = encoder.encode(message);
@@ -33,7 +40,7 @@ async function encryptAES(message, key) {
   // Adjust key to match AES requirements (16 bytes for AES-128)
   const aesKey = await crypto.subtle.importKey(
     "raw",
-    adjustKeyLength(key, 16), // Adjust key to 16 bytes
+    adjustKeyLength(key, 16),
     { name: "AES-GCM" },
     false,
     ["encrypt"]
@@ -54,6 +61,28 @@ async function encryptAES(message, key) {
   return result;
 }
 
+async function decryptAES(encryptedData, key) {
+  const iv = encryptedData.slice(0, 12);
+  const data = encryptedData.slice(12);
+
+  const aesKey = await crypto.subtle.importKey(
+    "raw",
+    adjustKeyLength(key, 16),
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"]
+  );
+
+  const decryptedData = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    aesKey,
+    data
+  );
+
+  const decoder = new TextDecoder();
+  return decoder.decode(decryptedData);
+}
+
 async function encryptDES(message, key) {
   const encoder = new TextEncoder();
   const data = encoder.encode(message);
@@ -61,7 +90,7 @@ async function encryptDES(message, key) {
   // Adjust key to match DES-EDE3 requirements (24 bytes)
   const desKey = await crypto.subtle.importKey(
     "raw",
-    adjustKeyLength(key, 24), // Adjust key to 24 bytes
+    adjustKeyLength(key, 24),
     { name: "DES-EDE3" },
     false,
     ["encrypt"]
@@ -82,10 +111,31 @@ async function encryptDES(message, key) {
   return result;
 }
 
+async function decryptDES(encryptedData, key) {
+  const iv = encryptedData.slice(0, 8);
+  const data = encryptedData.slice(8);
+
+  const desKey = await crypto.subtle.importKey(
+    "raw",
+    adjustKeyLength(key, 24),
+    { name: "DES-EDE3" },
+    false,
+    ["decrypt"]
+  );
+
+  const decryptedData = await crypto.subtle.decrypt(
+    { name: "DES-EDE3", iv },
+    desKey,
+    data
+  );
+
+  const decoder = new TextDecoder();
+  return decoder.decode(decryptedData);
+}
+
 app.get("/encrypt", async (req, res) => {
   const { message, key, algorithm } = req.query;
 
-  // Ensure necessary parameters are provided
   if (!message || !key || !algorithm) {
     return res
       .status(400)
@@ -108,6 +158,13 @@ app.get("/encrypt", async (req, res) => {
     }
 
     const encryptedBase64 = Buffer.from(encryptedMessage).toString("base64");
+
+    // Emit the encrypted message to all connected clients
+    io.emit("encrypted-message", {
+      algorithm,
+      encryptedMessage: encryptedBase64,
+    });
+
     res.send({ encryptedMessage: encryptedBase64 });
   } catch (error) {
     console.error(error);
@@ -115,8 +172,38 @@ app.get("/encrypt", async (req, res) => {
   }
 });
 
+io.on("connection", (socket) => {
+  console.log("A user connected");
+
+  socket.on("decrypt-message", async (data) => {
+    const { encryptedMessage, key, algorithm } = data;
+
+    try {
+      const encryptedBuffer = Buffer.from(encryptedMessage, "base64");
+      let decryptedMessage;
+
+      if (algorithm.toLowerCase() === "aes") {
+        decryptedMessage = await decryptAES(encryptedBuffer, key);
+      } else if (algorithm.toLowerCase() === "des") {
+        decryptedMessage = await decryptDES(encryptedBuffer, key);
+      } else {
+        return socket.emit("error", "Unsupported algorithm.");
+      }
+
+      socket.emit("decrypted-message", { decryptedMessage });
+    } catch (error) {
+      console.error(error);
+      socket.emit("error", "Decryption failed.");
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("A user disconnected");
+  });
+});
+
 app.use(express.static("public"));
 
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });

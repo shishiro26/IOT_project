@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Encrypt Message</title>
+    <!-- Include the Socket.IO client -->
+    <script src="https://cdn.socket.io/4.7.1/socket.io.min.js"></script>
   </head>
   <body>
     <h1>Encrypt Message</h1>
@@ -31,13 +33,22 @@
     <h3>Encrypted Message:</h3>
     <p id="encryptedMessage"></p>
 
+    <h3>Live Encrypted Message (from another device):</h3>
+    <p id="liveEncryptedMessage"></p>
+
     <script>
+      // Initialize Socket.IO client
+      const socket = io("http://localhost:4000");
+
       const input = document.getElementById("pla");
       const keyInput = document.getElementById("key");
       const algorithmSelect = document.getElementById("algorithm");
       const encryptBtn = document.getElementById("encryptBtn");
       const encryptedMessageDisplay =
         document.getElementById("encryptedMessage");
+      const liveEncryptedMessageDisplay = document.getElementById(
+        "liveEncryptedMessage"
+      );
 
       encryptBtn.addEventListener("click", async () => {
         const message = input.value;
@@ -64,11 +75,24 @@
 
           const data = await response.json();
 
+          // Display the encrypted message
           encryptedMessageDisplay.textContent = data.encryptedMessage;
+
+          // Emit the encrypted message to the server for broadcasting
+          socket.emit("encrypted-message", {
+            algorithm,
+            encryptedMessage: data.encryptedMessage,
+          });
         } catch (error) {
           console.error(error);
           alert("An error occurred while encrypting the message.");
         }
+      });
+
+      // Listen for live encrypted messages from other clients
+      socket.on("encrypted-message", (data) => {
+        // Display the live encrypted message in the other device's window
+        liveEncryptedMessageDisplay.textContent = data.encryptedMessage;
       });
     </script>
   </body>
