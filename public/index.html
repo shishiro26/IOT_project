@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Encrypt Message</title>
+  </head>
+  <body>
+    <h1>Encrypt Message</h1>
+
+    <div>
+      <label for="pla">Enter your message:</label>
+      <input type="text" id="pla" placeholder="Enter the value of the string" />
+    </div>
+
+    <div>
+      <label for="key">Enter encryption key:</label>
+      <input type="text" id="key" placeholder="Enter the encryption key" />
+    </div>
+
+    <div>
+      <label for="algorithm">Select encryption algorithm:</label>
+      <select id="algorithm">
+        <option value="aes">AES</option>
+        <option value="des">DES</option>
+      </select>
+    </div>
+
+    <button id="encryptBtn">Encrypt</button>
+
+    <h3>Encrypted Message:</h3>
+    <p id="encryptedMessage"></p>
+
+    <script>
+      const input = document.getElementById("pla");
+      const keyInput = document.getElementById("key");
+      const algorithmSelect = document.getElementById("algorithm");
+      const encryptBtn = document.getElementById("encryptBtn");
+      const encryptedMessageDisplay =
+        document.getElementById("encryptedMessage");
+
+      encryptBtn.addEventListener("click", async () => {
+        const message = input.value;
+        const key = keyInput.value;
+        const algorithm = algorithmSelect.value;
+
+        if (!message || !key) {
+          alert("Please enter both a message and a key.");
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `http://localhost:3000/encrypt?message=${encodeURIComponent(
+              message
+            )}&key=${encodeURIComponent(key)}&algorithm=${encodeURIComponent(
+              algorithm
+            )}`
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to encrypt the message");
+          }
+
+          const data = await response.json();
+
+          encryptedMessageDisplay.textContent = data.encryptedMessage;
+        } catch (error) {
+          console.error(error);
+          alert("An error occurred while encrypting the message.");
+        }
+      });
+    </script>
+  </body>
+</html>
