@@ -1,17 +1,39 @@
 import express from "express";
 import { Crypto } from "@peculiar/webcrypto";
+import cors from "cors";
 
-const port = 3000;
+const port = 4000;
 const app = express();
 const crypto = new Crypto();
+
+app.use(cors());
+
+function adjustKeyLength(key, requiredLength) {
+  const encoder = new TextEncoder();
+  const keyBytes = encoder.encode(key);
+
+  if (keyBytes.length === requiredLength) {
+    return keyBytes;
+  } else if (keyBytes.length < requiredLength) {
+    // Pad the key if it's too short
+    const paddedKey = new Uint8Array(requiredLength);
+    paddedKey.set(keyBytes);
+    return paddedKey;
+  } else {
+    // Truncate the key if it's too long
+    return keyBytes.slice(0, requiredLength);
+  }
+}
+
 
 async function encryptAES(message, key) {
   const encoder = new TextEncoder();
   const data = encoder.encode(message);
 
+  // Adjust key to match AES requirements (16 bytes for AES-128)
   const aesKey = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(key),
+    adjustKeyLength(key, 16), // Adjust key to 16 bytes
     { name: "AES-GCM" },
     false,
     ["encrypt"]
@@ -36,9 +58,10 @@ async function encryptDES(message, key) {
   const encoder = new TextEncoder();
   const data = encoder.encode(message);
 
+  // Adjust key to match DES-EDE3 requirements (24 bytes)
   const desKey = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(key),
+    adjustKeyLength(key, 24), // Adjust key to 24 bytes
     { name: "DES-EDE3" },
     false,
     ["encrypt"]
