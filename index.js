@@ -1,209 +1,104 @@
 import express from "express";
-import { Crypto } from "@peculiar/webcrypto";
 import cors from "cors";
-import http from "http";
-import { Server } from "socket.io";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+dotenv.config();
 
-const port = 4000;
+const port = process.env.PORT || 5000;
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-  },
-});
-const crypto = new Crypto();
 
 app.use(cors());
+app.use(express.json());
 
-function adjustKeyLength(key, requiredLength) {
-  const encoder = new TextEncoder();
-  const keyBytes = encoder.encode(key);
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log("Connected to MongoDB");
+  })
+  .catch((err) => {
+    console.error("Error connecting to MongoDB", err);
+  });
 
-  if (keyBytes.length === requiredLength) {
-    return keyBytes;
-  } else if (keyBytes.length < requiredLength) {
-    // Pad the key if it's too short
-    const paddedKey = new Uint8Array(requiredLength);
-    paddedKey.set(keyBytes);
-    return paddedKey;
-  } else {
-    // Truncate the key if it's too long
-    return keyBytes.slice(0, requiredLength);
+const sensorDataSchema = new mongoose.Schema({
+  timestamp: {
+    type: String,
+    default: () => new Date().toISOString(),
+  },
+  accelerometer: {
+    x: Number,
+    y: Number,
+    z: Number,
+  },
+  gyroscope: {
+    x: Number,
+    y: Number,
+    z: Number,
+  },
+  magnetometer: {
+    x: Number,
+    y: Number,
+    z: Number,
+  },
+  geolocation: {
+    altitude: Number,
+    heading: Number,
+    altitudeAccuracy: Number,
+  },
+});
+
+const SensorData = mongoose.model("SensorData", sensorDataSchema);
+
+app.post("/send-data", async (req, res) => {
+  const { accelerometer, gyroscope, magnetometer, geolocation } = req.body;
+
+  // Validate the data
+  if (
+    !accelerometer ||
+    !gyroscope ||
+    !magnetometer ||
+    !geolocation ||
+    !geolocation.altitude ||
+    !geolocation.heading ||
+    !geolocation.altitudeAccuracy
+  ) {
+    return res.status(400).json({ error: "Invalid or missing data" });
   }
-}
 
-async function encryptAES(message, key) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
+  console.log("Received Sensor Data:", req.body);
 
-  // Adjust key to match AES requirements (16 bytes for AES-128)
-  const aesKey = await crypto.subtle.importKey(
-    "raw",
-    adjustKeyLength(key, 16),
-    { name: "AES-GCM" },
-    false,
-    ["encrypt"]
-  );
-
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-
-  const encryptedData = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    data
-  );
-
-  const result = new Uint8Array(iv.length + encryptedData.byteLength);
-  result.set(iv);
-  result.set(new Uint8Array(encryptedData), iv.length);
-
-  return result;
-}
-
-async function decryptAES(encryptedData, key) {
-  const iv = encryptedData.slice(0, 12);
-  const data = encryptedData.slice(12);
-
-  const aesKey = await crypto.subtle.importKey(
-    "raw",
-    adjustKeyLength(key, 16),
-    { name: "AES-GCM" },
-    false,
-    ["decrypt"]
-  );
-
-  const decryptedData = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    data
-  );
-
-  const decoder = new TextDecoder();
-  return decoder.decode(decryptedData);
-}
-
-async function encryptDES(message, key) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-
-  // Adjust key to match DES-EDE3 requirements (24 bytes)
-  const desKey = await crypto.subtle.importKey(
-    "raw",
-    adjustKeyLength(key, 24),
-    { name: "DES-EDE3" },
-    false,
-    ["encrypt"]
-  );
-
-  const iv = crypto.getRandomValues(new Uint8Array(8));
-
-  const encryptedData = await crypto.subtle.encrypt(
-    { name: "DES-EDE3", iv },
-    desKey,
-    data
-  );
-
-  const result = new Uint8Array(iv.length + encryptedData.byteLength);
-  result.set(iv);
-  result.set(new Uint8Array(encryptedData), iv.length);
-
-  return result;
-}
-
-async function decryptDES(encryptedData, key) {
-  const iv = encryptedData.slice(0, 8);
-  const data = encryptedData.slice(8);
-
-  const desKey = await crypto.subtle.importKey(
-    "raw",
-    adjustKeyLength(key, 24),
-    { name: "DES-EDE3" },
-    false,
-    ["decrypt"]
-  );
-
-  const decryptedData = await crypto.subtle.decrypt(
-    { name: "DES-EDE3", iv },
-    desKey,
-    data
-  );
-
-  const decoder = new TextDecoder();
-  return decoder.decode(decryptedData);
-}
-
-app.get("/encrypt", async (req, res) => {
-  const { message, key, algorithm } = req.query;
-
-  if (!message || !key || !algorithm) {
-    return res
-      .status(400)
-      .send(
-        "Please provide 'message', 'key', and 'algorithm' query parameters."
-      );
-  }
+  const newData = new SensorData({
+    accelerometer,
+    gyroscope,
+    magnetometer,
+    geolocation,
+  });
 
   try {
-    let encryptedMessage;
-
-    if (algorithm.toLowerCase() === "aes") {
-      encryptedMessage = await encryptAES(message, key);
-    } else if (algorithm.toLowerCase() === "des") {
-      encryptedMessage = await encryptDES(message, key);
-    } else {
-      return res
-        .status(400)
-        .send("Unsupported algorithm. Please choose either 'aes' or 'des'.");
-    }
-
-    const encryptedBase64 = Buffer.from(encryptedMessage).toString("base64");
-
-    // Emit the encrypted message to all connected clients
-    io.emit("encrypted-message", {
-      algorithm,
-      encryptedMessage: encryptedBase64,
-    });
-
-    res.send({ encryptedMessage: encryptedBase64 });
+    await newData.save();
+    res.status(200).json({ message: "Sensor data stored successfully" });
   } catch (error) {
-    console.error(error);
-    res.status(500).send("Encryption failed.");
+    console.error("Error saving data to MongoDB:", error);
+    res.status(500).json({ error: "Failed to store sensor data" });
   }
 });
 
-io.on("connection", (socket) => {
-  console.log("A user connected");
-
-  socket.on("decrypt-message", async (data) => {
-    const { encryptedMessage, key, algorithm } = data;
-
-    try {
-      const encryptedBuffer = Buffer.from(encryptedMessage, "base64");
-      let decryptedMessage;
-
-      if (algorithm.toLowerCase() === "aes") {
-        decryptedMessage = await decryptAES(encryptedBuffer, key);
-      } else if (algorithm.toLowerCase() === "des") {
-        decryptedMessage = await decryptDES(encryptedBuffer, key);
-      } else {
-        return socket.emit("error", "Unsupported algorithm.");
-      }
-
-      socket.emit("decrypted-message", { decryptedMessage });
-    } catch (error) {
-      console.error(error);
-      socket.emit("error", "Decryption failed.");
-    }
-  });
-
-  socket.on("disconnect", () => {
-    console.log("A user disconnected");
-  });
+app.get("/get-data", async (req, res) => {
+  try {
+    const data = await SensorData.find();
+    res.status(200).json({ data });
+  } catch (error) {
+    console.error("Error retrieving data from MongoDB:", error);
+    res.status(500).json({ error: "Failed to retrieve sensor data" });
+  }
 });
 
-app.use(express.static("public"));
+app.get("/", (req, res) => {
+  res.send("Hello World");
+});
 
-server.listen(port, () => {
+app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
