@@ -27,6 +27,12 @@ const sensorDataSchema = new mongoose.Schema({
     type: String,
     default: () => new Date().toISOString(),
   },
+  time: {
+    type: String,
+  },
+  hashed_string: {
+    type: String,
+  },
   accelerometer: {
     x: Number,
     y: Number,
@@ -52,11 +58,20 @@ const sensorDataSchema = new mongoose.Schema({
 const SensorData = mongoose.model("SensorData", sensorDataSchema);
 
 app.post("/send-data", async (req, res) => {
-  const { accelerometer, gyroscope, magnetometer, geolocation } = req.body;
+  const {
+    time,
+    hashed_string,
+    accelerometer,
+    gyroscope,
+    magnetometer,
+    geolocation,
+  } = req.body;
 
   console.log("Received Sensor Data:", req.body);
 
   const newData = new SensorData({
+    time,
+    hashed_string,
     accelerometer,
     gyroscope,
     magnetometer,
