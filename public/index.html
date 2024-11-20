@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Encrypt Message</title>
-    <!-- Include the Socket.IO client -->
     <script src="https://cdn.socket.io/4.7.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   </head>
   <body>
     <h1>Encrypt Message</h1>
@@ -37,8 +37,7 @@
     <p id="liveEncryptedMessage"></p>
 
     <script>
-      // Initialize Socket.IO client
-      const socket = io("http://localhost:4000");
+      const socket = io("https://iot-project-h7tr.onrender.com/");
 
       const input = document.getElementById("pla");
       const keyInput = document.getElementById("key");
@@ -61,27 +60,22 @@
         }
 
         try {
-          const response = await fetch(
-            `http://localhost:4000/encrypt?message=${encodeURIComponent(
-              message
-            )}&key=${encodeURIComponent(key)}&algorithm=${encodeURIComponent(
-              algorithm
-            )}`
+          const response = await axios.get(
+            "https://iot-project-h7tr.onrender.com/encrypt",
+            {
+              params: {
+                message: message,
+                key: key,
+                algorithm: algorithm,
+              },
+            }
           );
 
-          if (!response.ok) {
-            throw new Error("Failed to encrypt the message");
-          }
+          encryptedMessageDisplay.textContent = response.data.encryptedMessage;
 
-          const data = await response.json();
-
-          // Display the encrypted message
-          encryptedMessageDisplay.textContent = data.encryptedMessage;
-
-          // Emit the encrypted message to the server for broadcasting
           socket.emit("encrypted-message", {
             algorithm,
-            encryptedMessage: data.encryptedMessage,
+            encryptedMessage: response.data.encryptedMessage,
           });
         } catch (error) {
           console.error(error);
@@ -89,9 +83,7 @@
         }
       });
 
-      // Listen for live encrypted messages from other clients
       socket.on("encrypted-message", (data) => {
-        // Display the live encrypted message in the other device's window
         liveEncryptedMessageDisplay.textContent = data.encryptedMessage;
       });
     </script>
