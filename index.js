@@ -54,19 +54,6 @@ const SensorData = mongoose.model("SensorData", sensorDataSchema);
 app.post("/send-data", async (req, res) => {
   const { accelerometer, gyroscope, magnetometer, geolocation } = req.body;
 
-  // Validate the data
-  if (
-    !accelerometer ||
-    !gyroscope ||
-    !magnetometer ||
-    !geolocation ||
-    !geolocation.altitude ||
-    !geolocation.heading ||
-    !geolocation.altitudeAccuracy
-  ) {
-    return res.status(400).json({ error: "Invalid or missing data" });
-  }
-
   console.log("Received Sensor Data:", req.body);
 
   const newData = new SensorData({
